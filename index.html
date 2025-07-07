@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hand Hash Generator with Camera Selection</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .error {
+      color: red;
+      background: #ffe6e6;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .success {
+      color: green;
+      background: #e6ffe6;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    select {
+      padding: 8px;
+      margin: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    video {
+      border: 2px solid #007bff;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Hand Hash Generator (Camera Select)</h2>
+  
+  <div id="status"></div>
+  
+  <label for="cameraSelect">Select Camera:</label>
+  <select id="cameraSelect">
+    <option value="">Loading cameras...</option>
+  </select>
+  <button onclick="startSelectedCamera()" id="startBtn">Start Camera</button>
+  <button onclick="requestCameraPermission()" id="permissionBtn">Request Camera Permission</button>
+  <br/><br/>
+  
+  <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 1px solid black;"></video>
+  <br/>
+  <button onclick="captureAndHash()" id="captureBtn" disabled>Scan Hand & Get Hash</button>
+  <pre id="output"></pre>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module">
+    import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs";
+    import { keccak256, toUtf8Bytes } from "https://cdn.jsdelivr.net/npm/ethers@6.8.1/dist/ethers.min.js";
+
+    const video = document.getElementById("video");
+    const output = document.getElementById("output");
+    const cameraSelect = document.getElementById("cameraSelect");
+    const status = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const permissionBtn = document.getElementById("permissionBtn");
+    const captureBtn = document.getElementById("captureBtn");
+
+    // Socket.IO connection
+    const socket = io();
+    let handLandmarker;
+    let currentStream;
+    let hasPermission = false;
+
+    function showStatus(message, type = 'info') {
+      status.innerHTML = `<div class="${type}">${message}</div>`;
+    }
+
+    function clearStatus() {
+      status.innerHTML = '';
+    }
+
+    async function setupHandLandmarker() {
+      try {
+        showStatus("Loading hand detection model...", "info");
+        
+        // Try the latest version first
+        let vision;
+        try {
+          vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+          );
+        } catch (error) {
+          // Fallback to specific version
+          vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+          );
+        }
+        
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          },
+          runningMode: "VIDEO",
+          numHands: 1,
+        });
+        showStatus("Hand detection model loaded successfully!", "success");
+      } catch (error) {
+        showStatus(`Error loading hand detection model: ${error.message}`, "error");
+        console.error("Hand detection error:", error);
+        
+        // Show troubleshooting tips
+        showStatus("Troubleshooting: Check internet connection and try refreshing the page. If the issue persists, the MediaPipe model may be temporarily unavailable.", "error");
+      }
+    }
+
+    async function requestCameraPermission() {
+      try {
+        showStatus("Requesting camera permission...", "info");
+        
+        // Notify server about camera status
+        socket.emit('cameraStatus', { action: 'requesting_permission' });
+        
+        // Request basic camera access first
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: false 
+        });
+        
+        // Stop the stream immediately after getting permission
+        stream.getTracks().forEach(track => track.stop());
+        
+        hasPermission = true;
+        showStatus("Camera permission granted! You can now select a camera.", "success");
+        
+        // Notify server about successful permission
+        socket.emit('cameraStatus', { action: 'permission_granted' });
+        
+        // Now enumerate devices
+        await listCameras();
+        
+      } catch (error) {
+        hasPermission = false;
+        socket.emit('cameraStatus', { action: 'permission_denied', error: error.message });
+        
+        if (error.name === 'NotAllowedError') {
+          showStatus("Camera permission denied. Please allow camera access and try again.", "error");
+        } else if (error.name === 'NotFoundError') {
+          showStatus("No camera found on your device.", "error");
+        } else if (error.name === 'NotSupportedError') {
+          showStatus("Camera not supported in this browser. Please use a modern browser with camera support.", "error");
+        } else {
+          showStatus(`Camera error: ${error.message}`, "error");
+        }
+      }
+    }
+
+    async function listCameras() {
+      try {
+        if (!hasPermission) {
+          cameraSelect.innerHTML = '<option value="">Please request camera permission first</option>';
+          return;
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === "videoinput");
+        
+        cameraSelect.innerHTML = "";
+        
+        if (videoDevices.length === 0) {
+          cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+          return;
+        }
+
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.text = device.label || `Camera ${index + 1}`;
+          cameraSelect.appendChild(option);
+        });
+
+        showStatus(`Found ${videoDevices.length} camera(s)`, "success");
+        
+      } catch (error) {
+        showStatus(`Error listing cameras: ${error.message}`, "error");
+        cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+      }
+    }
+
+    async function startSelectedCamera() {
+      try {
+        if (!hasPermission) {
+          showStatus("Please request camera permission first", "error");
+          return;
+        }
+
+        const deviceId = cameraSelect.value;
+        if (!deviceId) {
+          showStatus("Please select a camera first", "error");
+          return;
+        }
+
+        showStatus("Starting camera...", "info");
+
+        // Stop any existing stream
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        };
+
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+
+        // Wait for video to be ready
+        video.onloadedmetadata = () => {
+          showStatus("Camera started successfully!", "success");
+          captureBtn.disabled = false;
+        };
+
+        video.onerror = (error) => {
+          showStatus(`Video error: ${error.message}`, "error");
+        };
+
+      } catch (error) {
+        showStatus(`Error starting camera: ${error.message}`, "error");
+        captureBtn.disabled = true;
+      }
+    }
+
+    async function captureAndHash() {
+      if (!handLandmarker) {
+        output.textContent = "HandLandmarker is loading...";
+        return;
+      }
+
+      if (!currentStream) {
+        output.textContent = "Please start the camera first";
+        return;
+      }
+
+      try {
+        output.textContent = "Processing hand detection...";
+
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const detections = await handLandmarker.detect(canvas);
+        
+        if (detections.handednesses.length === 0) {
+          output.textContent = "No hand detected! Please position your hand in front of the camera.";
+          return;
+        }
+
+        const landmarks = detections.landmarks[0];
+        const landmarkString = landmarks.map(l => `${l.x.toFixed(5)},${l.y.toFixed(5)}`).join(";");
+        const hash = keccak256(toUtf8Bytes(landmarkString));
+
+        // Send hash to server via Socket.IO
+        socket.emit('handHash', { 
+          hash: hash, 
+          timestamp: new Date().toISOString(),
+          landmarkCount: landmarks.length
+        });
+
+        output.textContent = `Hand detected! Hash generated:\n${hash}\n\nSending to server...`;
+        
+      } catch (error) {
+        output.textContent = `Error processing hand: ${error.message}`;
+      }
+    }
+
+    // Check if running on HTTPS
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      showStatus("Camera access requires HTTPS. Please run this on a secure connection or localhost.", "error");
+    }
+
+    // Socket.IO event listeners
+    socket.on('connect', () => {
+      showStatus('Connected to server', 'success');
+    });
+
+    socket.on('disconnect', () => {
+      showStatus('Disconnected from server', 'error');
+    });
+
+    socket.on('hashReceived', (data) => {
+      if (data.success) {
+        output.textContent += `\n\n✅ Server response: ${data.message}\nTimestamp: ${data.timestamp}`;
+      }
+    });
+
+    socket.on('statusAcknowledged', (data) => {
+      console.log('Server acknowledged status:', data);
+    });
+
+    // Initialize
+    setupHandLandmarker();
+    
+    // Auto-request permission on page load
+    setTimeout(() => {
+      if (!hasPermission) {
+        requestCameraPermission();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
