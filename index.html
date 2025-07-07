@@ -23,7 +23,7 @@
     .success {
       color: green;
       background: #e6ffe6;
-      padding: 10px;
+      padding: 10px;.
       border-radius: 5px;
       margin: 10px 0;
     }
@@ -125,9 +125,10 @@
   <button onclick="requestCameraPermission()" id="permissionBtn">Request Camera Permission</button>
   <br/><br/>
   
-  <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 1px solid black; position: absolute;"></video>
-  <canvas id="overlay" width="400" height="300" style="position: absolute; pointer-events: none; border-radius: 10px;"></canvas>
-  <div style="position: relative; width: 400px; height: 300px; margin-bottom: 10px;"></div>
+  <div style="position: relative; width: 400px; height: 300px; margin-bottom: 10px;">
+    <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 1px solid black;"></video>
+    <canvas id="overlay" width="400" height="300" style="pointer-events: none; border-radius: 10px; position: absolute; left: 0; top: 0;"></canvas>
+  </div>
   <br/>
   <button onclick="captureAndHash()" id="captureBtn" disabled>Scan Hand & Get Hash</button>
   <pre id="output"></pre>
