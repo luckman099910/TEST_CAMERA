@@ -126,8 +126,8 @@
   <br/><br/>
   
   <div style="position: relative; width: 400px; height: 300px; margin-bottom: 10px;">
-    <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 1px solid black;"></video>
-    <canvas id="overlay" width="400" height="300" style="pointer-events: none; border-radius: 10px; position: absolute; left: 0; top: 0;"></canvas>
+    <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 2px solid #4be04b; border-radius: 10px; background: #000; position: absolute; left: 0; top: 0; z-index: 1;"></video>
+    <canvas id="overlay" width="400" height="300" style="pointer-events: none; border-radius: 10px; position: absolute; left: 0; top: 0; z-index: 2; background: transparent;"></canvas>
   </div>
   <br/>
   <button onclick="captureAndHash()" id="captureBtn" disabled>Scan Hand & Get Hash</button>
