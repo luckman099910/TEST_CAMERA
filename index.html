@@ -505,11 +505,25 @@
         return;
       }
       const hash = hashPalm(currentLandmarks);
-      if (hash === users[selectedUser].hash) {
-        verifyResult.textContent = 'MATCH (' + users[selectedUser].name + ')';
+      const THRESHOLD = 0.25;
+      let bestDist = Infinity;
+      let bestMatch = null;
+      users.forEach(user => {
+        const dist = Math.sqrt(
+          Math.pow(hash.charCodeAt(0) - user.hash.charCodeAt(0), 2) +
+          Math.pow(hash.charCodeAt(1) - user.hash.charCodeAt(1), 2) +
+          Math.pow(hash.charCodeAt(2) - user.hash.charCodeAt(2), 2)
+        );
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestMatch = user;
+        }
+      });
+      if (bestDist < THRESHOLD) {
+        verifyResult.textContent = `MATCH (${bestMatch.name})`;
         verifyOutput.className = 'output match';
       } else {
-        verifyResult.textContent = 'MISMATCH';
+        verifyResult.textContent = 'No match found. Closest: ' + bestMatch.name + ' (Distance: ' + bestDist.toFixed(5) + ')';
         verifyOutput.className = 'output mismatch';
       }
     };
