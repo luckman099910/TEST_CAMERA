@@ -67,103 +67,105 @@
   </div>
   <div id="output"></div>
   <script>
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const overlayCtx = overlay.getContext('2d');
-    const output = document.getElementById('output');
-    const enrollBtn = document.getElementById('enrollBtn');
-    const identifyBtn = document.getElementById('identifyBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const userNameInput = document.getElementById('userName');
+window.onload = function() {
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const overlayCtx = overlay.getContext('2d');
+  const output = document.getElementById('output');
+  const enrollBtn = document.getElementById('enrollBtn');
+  const identifyBtn = document.getElementById('identifyBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const userNameInput = document.getElementById('userName');
 
-    // Load face-api.js models from CDN
-    Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models'),
-      faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models')
-    ]).then(startVideo);
+  // Load face-api.js models from CDN
+  Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models'),
+    faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models'),
+    faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models')
+  ]).then(startVideo);
 
-    function startVideo() {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => { video.srcObject = stream; })
-        .catch(err => { output.textContent = 'Camera error: ' + err.message; });
+  function startVideo() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { output.textContent = 'Camera error: ' + err.message; });
+  }
+
+  function drawBox(box) {
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    if (box) {
+      overlayCtx.strokeStyle = '#4be04b';
+      overlayCtx.lineWidth = 3;
+      overlayCtx.strokeRect(box.x, box.y, box.width, box.height);
     }
+  }
 
-    function drawBox(box) {
-      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      if (box) {
-        overlayCtx.strokeStyle = '#4be04b';
-        overlayCtx.lineWidth = 3;
-        overlayCtx.strokeRect(box.x, box.y, box.width, box.height);
+  async function getFaceDescriptor() {
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+    if (detection) {
+      drawBox(detection.detection.box);
+      return detection.descriptor;
+    } else {
+      output.innerHTML = '<span class="error">No face detected!</span>';
+      return null;
+    }
+  }
+
+  enrollBtn.onclick = async () => {
+    const name = userNameInput.value.trim();
+    if (!name) {
+      output.innerHTML = '<span class="error">Please enter a name or ID.</span>';
+      return;
+    }
+    output.textContent = 'Detecting face...';
+    const descriptor = await getFaceDescriptor();
+    if (!descriptor) return;
+    let users = JSON.parse(localStorage.getItem('faceUsers') || '[]');
+    users = users.filter(u => u.name !== name);
+    users.push({ name, descriptor: Array.from(descriptor) });
+    localStorage.setItem('faceUsers', JSON.stringify(users));
+    output.innerHTML = `<span class="success">Enrolled face for user: ${name}</span>`;
+  };
+
+  identifyBtn.onclick = async () => {
+    output.textContent = 'Detecting face...';
+    const descriptor = await getFaceDescriptor();
+    if (!descriptor) return;
+    let users = JSON.parse(localStorage.getItem('faceUsers') || '[]');
+    if (users.length === 0) {
+      output.innerHTML = '<span class="error">No enrolled users found.</span>';
+      return;
+    }
+    let bestMatch = null, bestDist = Infinity;
+    for (const user of users) {
+      const dist = euclideanDistance(descriptor, user.descriptor);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestMatch = user;
       }
     }
-
-    async function getFaceDescriptor() {
-      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-      if (detection) {
-        drawBox(detection.detection.box);
-        return detection.descriptor;
-      } else {
-        output.innerHTML = '<span class="error">No face detected!</span>';
-        return null;
-      }
+    const THRESHOLD = 0.6; // typical for face-api.js
+    if (bestDist < THRESHOLD) {
+      output.innerHTML = `<span class="success">Identified as: ${bestMatch.name} (Distance: ${bestDist.toFixed(4)})</span>`;
+    } else {
+      output.innerHTML = `<span class="error">No match found. Closest: ${bestMatch.name} (Distance: ${bestDist.toFixed(4)})</span>`;
     }
+  };
 
-    enrollBtn.onclick = async () => {
-      const name = userNameInput.value.trim();
-      if (!name) {
-        output.innerHTML = '<span class="error">Please enter a name or ID.</span>';
-        return;
-      }
-      output.textContent = 'Detecting face...';
-      const descriptor = await getFaceDescriptor();
-      if (!descriptor) return;
-      let users = JSON.parse(localStorage.getItem('faceUsers') || '[]');
-      users = users.filter(u => u.name !== name);
-      users.push({ name, descriptor: Array.from(descriptor) });
-      localStorage.setItem('faceUsers', JSON.stringify(users));
-      output.innerHTML = `<span class="success">Enrolled face for user: ${name}</span>`;
-    };
+  clearBtn.onclick = () => {
+    localStorage.removeItem('faceUsers');
+    output.innerHTML = '<span class="success">All enrolled users have been cleared.</span>';
+  };
 
-    identifyBtn.onclick = async () => {
-      output.textContent = 'Detecting face...';
-      const descriptor = await getFaceDescriptor();
-      if (!descriptor) return;
-      let users = JSON.parse(localStorage.getItem('faceUsers') || '[]');
-      if (users.length === 0) {
-        output.innerHTML = '<span class="error">No enrolled users found.</span>';
-        return;
-      }
-      let bestMatch = null, bestDist = Infinity;
-      for (const user of users) {
-        const dist = euclideanDistance(descriptor, user.descriptor);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestMatch = user;
-        }
-      }
-      const THRESHOLD = 0.6; // typical for face-api.js
-      if (bestDist < THRESHOLD) {
-        output.innerHTML = `<span class="success">Identified as: ${bestMatch.name} (Distance: ${bestDist.toFixed(4)})</span>`;
-      } else {
-        output.innerHTML = `<span class="error">No match found. Closest: ${bestMatch.name} (Distance: ${bestDist.toFixed(4)})</span>`;
-      }
-    };
-
-    clearBtn.onclick = () => {
-      localStorage.removeItem('faceUsers');
-      output.innerHTML = '<span class="success">All enrolled users have been cleared.</span>';
-    };
-
-    function euclideanDistance(a, b) {
-      let sum = 0;
-      for (let i = 0; i < a.length; ++i) {
-        const d = a[i] - b[i];
-        sum += d * d;
-      }
-      return Math.sqrt(sum / a.length);
+  function euclideanDistance(a, b) {
+    let sum = 0;
+    for (let i = 0; i < a.length; ++i) {
+      const d = a[i] - b[i];
+      sum += d * d;
     }
+    return Math.sqrt(sum / a.length);
+  }
+};
   </script>
 </body>
 </html> 
