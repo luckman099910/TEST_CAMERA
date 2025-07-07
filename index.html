@@ -279,6 +279,11 @@
         requestCameraPermission();
       }
     }, 1000);
+
+    // Expose functions to global scope for HTML onclick
+    window.startSelectedCamera = startSelectedCamera;
+    window.requestCameraPermission = requestCameraPermission;
+    window.captureAndHash = captureAndHash;
   </script>
 </body>
 </html>
