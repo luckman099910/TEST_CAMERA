@@ -1,527 +1,535 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Hand Hash Generator with Camera Selection</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400, initial-scale=1.0">
+  <title>Hand Scan & Verify</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      background: #fff;
-      color: #222;
-      transition: background 0.3s, color 0.3s;
+      background: #181c20;
+      color: #f3f3f3;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
     }
-    .error {
-      color: red;
-      background: #ffe6e6;
-      padding: 10px;
-      border-radius: 5px;
-      margin: 10px 0;
+    h1 {
+      margin-top: 32px;
+      font-size: 2rem;
+      letter-spacing: 1px;
     }
-    .success {
-      color: green;
-      background: #e6ffe6;
-      padding: 10px;
-      border-radius: 5px;
-      margin: 10px 0;
+    .camera-select-row {
+      margin-top: 18px;
+      margin-bottom: 0;
+      width: 400px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: flex-start;
     }
-    button {
-      padding: 10px 15px;
-      margin: 5px;
+    .camera-select-row label {
+      font-size: 1rem;
+      color: #aaa;
+    }
+    .camera-select-row select {
+      font-size: 1rem;
+      padding: 6px 10px;
+      border-radius: 6px;
       border: none;
-      border-radius: 5px;
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-      transition: background 0.3s, color 0.3s;
+      background: #23272e;
+      color: #fff;
+      outline: 1px solid #2d8cff44;
     }
-    button:hover {
-      background: #0056b3;
-    }
-    button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-    select, input[type="text"] {
-      padding: 8px;
-      margin: 5px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-      background: #fff;
-      color: #222;
-      transition: background 0.3s, color 0.3s, border 0.3s;
+    .container {
+      margin-top: 12px;
+      background: #23272e;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px #0008;
+      padding: 24px 32px 32px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     video, canvas {
-      border: 2px solid #007bff;
-      border-radius: 10px;
-      background: #fff;
-      transition: border 0.3s, background 0.3s;
+      width: 400px;
+      height: 300px;
+      border-radius: 12px;
+      background: #111;
+      box-shadow: 0 2px 8px #0006;
+      position: absolute;
+      top: 0;
+      left: 0;
     }
-    /* Dark mode styles */
-    body.dark-mode {
-      background: #181a1b;
-      color: #f1f1f1;
+    .video-canvas-wrapper {
+      position: relative;
+      width: 400px;
+      height: 300px;
+      margin-bottom: 18px;
     }
-    body.dark-mode .error {
-      color: #ff6b6b;
-      background: #2d1a1a;
+    .btn-row {
+      display: flex;
+      gap: 16px;
+      margin: 18px 0 10px 0;
     }
-    body.dark-mode .success {
-      color: #4be04b;
-      background: #1a2d1a;
+    button {
+      background: #2d8cff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
     }
-    body.dark-mode button {
-      background: #222c3a;
-      color: #f1f1f1;
+    button:active {
+      background: #1a5bb8;
     }
-    body.dark-mode button:hover {
-      background: #33415c;
+    .output {
+      margin-top: 10px;
+      background: #181c20;
+      border-radius: 8px;
+      padding: 12px 16px;
+      min-width: 340px;
+      word-break: break-all;
+      font-size: 0.98rem;
+      box-shadow: 0 1px 4px #0004;
     }
-    body.dark-mode button:disabled {
-      background: #444;
-      color: #888;
+    .match {
+      color: #2dff7a;
+      font-weight: bold;
     }
-    body.dark-mode select, body.dark-mode input[type="text"] {
-      background: #23272a;
-      color: #f1f1f1;
-      border: 1px solid #444;
+    .mismatch {
+      color: #ff4d4d;
+      font-weight: bold;
     }
-    body.dark-mode video, body.dark-mode canvas {
-      border: 2px solid #4be04b;
-      background: #23272a;
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #333;
+      border-radius: 6px;
+      margin: 10px 0 0 0;
+      overflow: hidden;
+      box-shadow: 0 1px 4px #0004;
     }
-    #darkModeToggle {
-      background: #23272a;
-      color: #f1f1f1;
-      border: 1px solid #444;
-      transition: background 0.3s, color 0.3s;
+    .progress {
+      height: 100%;
+      background: #2d8cff;
+      transition: width 0.1s;
     }
-    #darkModeToggle:hover {
-      background: #33415c;
+    .user-list {
+      margin: 10px 0 0 0;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
     }
-    body.dark-mode #darkModeToggle {
-      background: #f1f1f1;
-      color: #23272a;
-      border: 1px solid #888;
+    .user-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1rem;
+      background: #222;
+      border-radius: 6px;
+      padding: 4px 10px;
+      margin-bottom: 2px;
     }
-    body.dark-mode #darkModeToggle:hover {
-      background: #e6ffe6;
-      color: #181a1b;
+    .user-item.selected {
+      background: #2d8cff33;
+      font-weight: bold;
+    }
+    .user-delete {
+      background: #ff4d4d;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+    .user-delete:active {
+      background: #b80000;
+    }
+    .register-row {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0 0 0;
+      width: 100%;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .register-row input {
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 1rem;
+      width: 120px;
+      background: #181c20;
+      color: #fff;
+      outline: 1px solid #2d8cff44;
+    }
+    @media (max-width: 450px) {
+      .container, .video-canvas-wrapper, video, canvas, .camera-select-row {
+        width: 98vw;
+        min-width: unset;
+        max-width: 100vw;
+      }
+      .output {
+        min-width: unset;
+        width: 90vw;
+      }
     }
   </style>
 </head>
 <body>
-  <h2>Hand Hash Generator (Camera Select)</h2>
-  
-  <div id="status"></div>
-  
-  <label for="cameraSelect">Select Camera:</label>
-  <select id="cameraSelect">
-    <option value="">Loading cameras...</option>
-  </select>
-  <button onclick="startSelectedCamera()" id="startBtn">Start Camera</button>
-  <button onclick="requestCameraPermission()" id="permissionBtn">Request Camera Permission</button>
-  <br/><br/>
-  
-  <div style="position: relative; width: 400px; height: 300px; margin-bottom: 10px;">
-    <video id="video" autoplay playsinline style="width: 400px; height: 300px; border: 2px solid #4be04b; border-radius: 10px; background: #000; position: absolute; left: 0; top: 0; z-index: 1;"></video>
-    <canvas id="overlay" width="400" height="300" style="pointer-events: none; border-radius: 10px; position: absolute; left: 0; top: 0; z-index: 2; background: transparent;"></canvas>
+  <h1>Hand Scan & Verify</h1>
+  <div class="camera-select-row">
+    <label for="cameraSelect">Camera:</label>
+    <select id="cameraSelect"></select>
   </div>
-  <br/>
-  <button onclick="captureAndHash()" id="captureBtn" disabled>Scan Hand & Get Hash</button>
-  <pre id="output"></pre>
-
-  <div style="margin-bottom: 10px;">
-    <input type="text" id="userName" placeholder="Enter name or ID" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc;" />
-    <button onclick="enrollHand()" id="enrollBtn">Enroll Hand</button>
-    <button onclick="identifyHand()" id="identifyBtn">Identify Hand</button>
-    <button onclick="clearAllUsers()" id="clearBtn" style="background: #dc3545; color: white;">Clear All Users</button>
+  <div class="container">
+    <div class="video-canvas-wrapper">
+      <video id="input_video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="progress-bar"><div class="progress" id="progress" style="width:0%"></div></div>
+    <div class="register-row">
+      <input id="username" maxlength="20" placeholder="Name (max 10)" />
+      <button id="registerBtn">Register</button>
+    </div>
+    <div class="user-list" id="userList"></div>
+    <div class="btn-row">
+      <button id="verifyBtn">Verify Selected</button>
+    </div>
+    <div class="output" id="verifyOutput">Verification: <span id="verifyResult">-</span></div>
   </div>
+  <script>
+    // UI Elements
+    const video = document.getElementById('input_video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const registerBtn = document.getElementById('registerBtn');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const usernameInput = document.getElementById('username');
+    const userListDiv = document.getElementById('userList');
+    const progressBar = document.getElementById('progress');
+    const verifyResult = document.getElementById('verifyResult');
+    const verifyOutput = document.getElementById('verifyOutput');
+    const cameraSelect = document.getElementById('cameraSelect');
 
-  <button id="darkModeToggle" style="position: absolute; top: 20px; right: 20px; padding: 8px 16px; border-radius: 5px; border: none; cursor: pointer;">🌙 Dark Mode</button>
+    // State
+    let currentLandmarks = null;
+    let handInBox = false;
+    let steadyStart = null;
+    let steadyTimer = null;
+    let progress = 0;
+    let selectedUser = null;
+    let users = [];
+    const MAX_USERS = 10;
+    const STEADY_TIME = 5000; // ms
+    let currentStream = null;
+    let camera = null;
+    let cameraDevices = [];
 
-  <script type="module">
-    import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs";
-    import { keccak256, toUtf8Bytes } from "https://cdn.jsdelivr.net/npm/ethers@6.8.1/dist/ethers.min.js";
+    // Guide box (centered)
+    const GUIDE_BOX = {
+      x: 60, y: 30, w: 280, h: 240
+    };
 
-    const video = document.getElementById("video");
-    const output = document.getElementById("output");
-    const cameraSelect = document.getElementById("cameraSelect");
-    const status = document.getElementById("status");
-    const startBtn = document.getElementById("startBtn");
-    const permissionBtn = document.getElementById("permissionBtn");
-    const captureBtn = document.getElementById("captureBtn");
-    const overlay = document.getElementById("overlay");
-    const overlayCtx = overlay.getContext("2d");
-
-    let handLandmarker;
-    let currentStream;
-    let hasPermission = false;
-
-    function showStatus(message, type = 'info') {
-      status.innerHTML = `<div class="${type}">${message}</div>`;
-    }
-
-    function clearStatus() {
-      status.innerHTML = '';
-    }
-
-    async function setupHandLandmarker() {
+    // LocalStorage helpers
+    function loadUsers() {
       try {
-        showStatus("Loading hand detection model...", "info");
-        
-        // Try the latest version first
-        let vision;
-        try {
-          vision = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-          );
-        } catch (error) {
-          // Fallback to specific version
-          vision = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-          );
-        }
-        
-        handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-          },
-          runningMode: "VIDEO",
-          numHands: 1,
-        });
-        showStatus("Hand detection model loaded successfully!", "success");
-      } catch (error) {
-        showStatus(`Error loading hand detection model: ${error.message}`, "error");
-        console.error("Hand detection error:", error);
-        
-        // Show troubleshooting tips
-        showStatus("Troubleshooting: Check internet connection and try refreshing the page. If the issue persists, the MediaPipe model may be temporarily unavailable.", "error");
-      }
+        users = JSON.parse(localStorage.getItem('handUsers') || '[]');
+      } catch { users = []; }
+      if (!Array.isArray(users)) users = [];
+      if (users.length > MAX_USERS) users = users.slice(0, MAX_USERS);
+    }
+    function saveUsers() {
+      localStorage.setItem('handUsers', JSON.stringify(users));
     }
 
-    async function requestCameraPermission() {
-      try {
-        showStatus("Requesting camera permission...", "info");
-        // Request basic camera access first
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
-          audio: false 
-        });
-        // Stop the stream immediately after getting permission
-        stream.getTracks().forEach(track => track.stop());
-        hasPermission = true;
-        showStatus("Camera permission granted! You can now select a camera.", "success");
-        // Now enumerate devices
-        await listCameras();
-      } catch (error) {
-        hasPermission = false;
-        if (error.name === 'NotAllowedError') {
-          showStatus("Camera permission denied. Please allow camera access and try again.", "error");
-        } else if (error.name === 'NotFoundError') {
-          showStatus("No camera found on your device.", "error");
-        } else if (error.name === 'NotSupportedError') {
-          showStatus("Camera not supported in this browser. Please use a modern browser with camera support.", "error");
-        } else {
-          showStatus(`Camera error: ${error.message}`, "error");
-        }
-      }
-    }
-
-    async function listCameras() {
-      try {
-        if (!hasPermission) {
-          cameraSelect.innerHTML = '<option value="">Please request camera permission first</option>';
-          return;
-        }
-
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === "videoinput");
-        
-        cameraSelect.innerHTML = "";
-        
-        if (videoDevices.length === 0) {
-          cameraSelect.innerHTML = '<option value="">No cameras found</option>';
-          return;
-        }
-
-        videoDevices.forEach((device, index) => {
-          const option = document.createElement("option");
-          option.value = device.deviceId;
-          option.text = device.label || `Camera ${index + 1}`;
-          cameraSelect.appendChild(option);
-        });
-
-        showStatus(`Found ${videoDevices.length} camera(s)`, "success");
-        
-      } catch (error) {
-        showStatus(`Error listing cameras: ${error.message}`, "error");
-        cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
-      }
-    }
-
-    async function startSelectedCamera() {
-      try {
-        if (!hasPermission) {
-          showStatus("Please request camera permission first", "error");
-          return;
-        }
-
-        const deviceId = cameraSelect.value;
-        if (!deviceId) {
-          showStatus("Please select a camera first", "error");
-          return;
-        }
-
-        showStatus("Starting camera...", "info");
-
-        // Stop any existing stream
-        if (currentStream) {
-          currentStream.getTracks().forEach(track => track.stop());
-        }
-
-        const constraints = {
-          video: {
-            deviceId: { exact: deviceId },
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
+    // UI: user list
+    function renderUserList() {
+      userListDiv.innerHTML = '';
+      users.forEach((user, idx) => {
+        const div = document.createElement('div');
+        div.className = 'user-item' + (selectedUser === idx ? ' selected' : '');
+        div.innerHTML = `<span>${user.name}</span>`;
+        div.onclick = () => { selectedUser = idx; renderUserList(); };
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.className = 'user-delete';
+        del.onclick = (e) => {
+          e.stopPropagation();
+          users.splice(idx, 1);
+          if (selectedUser === idx) selectedUser = null;
+          else if (selectedUser > idx) selectedUser--;
+          saveUsers();
+          renderUserList();
         };
+        div.appendChild(del);
+        userListDiv.appendChild(div);
+      });
+    }
 
+    // MediaPipe Hands setup
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+    hands.onResults(onResults);
+
+    // Camera setup
+    async function startCamera(deviceId) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      let constraints = {
+        video: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          width: { ideal: 400 },
+          height: { ideal: 300 }
+        },
+        audio: false
+      };
+      try {
         currentStream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = currentStream;
-
-        // Wait for video to be ready
-        video.onloadedmetadata = () => {
-          showStatus("Camera started successfully!", "success");
-          captureBtn.disabled = false;
-        };
-
-        video.onerror = (error) => {
-          showStatus(`Video error: ${error.message}`, "error");
-        };
-
-      } catch (error) {
-        showStatus(`Error starting camera: ${error.message}`, "error");
-        captureBtn.disabled = true;
+        if (camera) camera.stop();
+        camera = new Camera(video, {
+          onFrame: async () => {
+            await hands.send({image: video});
+          },
+          width: 400,
+          height: 300
+        });
+        camera.start();
+      } catch (e) {
+        alert('Could not access camera: ' + e.message);
       }
     }
 
-    async function captureAndHash() {
-      if (!handLandmarker) {
-        output.textContent = "HandLandmarker is loading...";
-        return;
-      }
-      if (!currentStream) {
-        output.textContent = "Please start the camera first";
-        return;
-      }
+    // Camera device selection
+    async function updateCameraList() {
       try {
-        output.textContent = "Processing hand detection...";
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Use detectForVideo for runningMode: 'VIDEO'
-        const detections = await handLandmarker.detectForVideo(canvas, performance.now());
-        // Clear overlay
-        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-        if (detections.handednesses.length === 0) {
-          output.textContent = "No hand detected! Please position your hand in front of the camera.";
-          return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        cameraDevices = devices.filter(d => d.kind === 'videoinput');
+        cameraSelect.innerHTML = '';
+        cameraDevices.forEach((device, idx) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.text = device.label || `Camera ${idx+1}`;
+          cameraSelect.appendChild(option);
+        });
+        if (cameraDevices.length > 0) {
+          cameraSelect.value = cameraDevices[0].deviceId;
+          startCamera(cameraDevices[0].deviceId);
         }
-        // Draw landmarks and connections
-        const landmarks = detections.landmarks[0];
-        drawHandLandmarks(overlayCtx, landmarks, overlay.width, overlay.height);
-        const landmarkString = landmarks.map(l => `${l.x.toFixed(5)},${l.y.toFixed(5)}`).join(";");
-        const hash = keccak256(toUtf8Bytes(landmarkString));
-        output.textContent = `Hand detected! Hash generated:\n${hash}`;
-      } catch (error) {
-        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-        output.textContent = `Error processing hand: ${error.message}`;
+      } catch (e) {
+        alert('Could not enumerate cameras: ' + e.message);
       }
     }
-
-    // Draw hand landmarks and connections
-    function drawHandLandmarks(ctx, landmarks, width, height) {
-      // MediaPipe hand connections
-      const connections = [
-        [0,1],[1,2],[2,3],[3,4],      // Thumb
-        [0,5],[5,6],[6,7],[7,8],      // Index
-        [5,9],[9,10],[10,11],[11,12], // Middle
-        [9,13],[13,14],[14,15],[15,16], // Ring
-        [13,17],[17,18],[18,19],[19,20], // Pinky
-        [0,17] // Palm base
-      ];
-      ctx.save();
-      ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = '#00FF00';
-      ctx.lineWidth = 2;
-      // Draw connections
-      for (const [start, end] of connections) {
-        const s = landmarks[start];
-        const e = landmarks[end];
-        ctx.beginPath();
-        ctx.moveTo(s.x * width, s.y * height);
-        ctx.lineTo(e.x * width, e.y * height);
-        ctx.stroke();
-      }
-      // Draw landmarks
-      ctx.fillStyle = '#FF0000';
-      for (const l of landmarks) {
-        ctx.beginPath();
-        ctx.arc(l.x * width, l.y * height, 4, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
-    // Enroll hand: save landmarks to localStorage
-    function enrollHand() {
-      if (!handLandmarker) {
-        output.textContent = "HandLandmarker is loading...";
-        return;
-      }
-      if (!currentStream) {
-        output.textContent = "Please start the camera first";
-        return;
-      }
-      const userName = document.getElementById("userName").value.trim();
-      if (!userName) {
-        output.textContent = "Please enter a name or ID to enroll.";
-        return;
-      }
-      captureHandLandmarks().then(landmarks => {
-        if (!landmarks) {
-          output.textContent = "No hand detected! Please try again.";
-          return;
-        }
-        let users = JSON.parse(localStorage.getItem('handUsers') || '[]');
-        if (users.length >= 300) {
-          output.textContent = "User limit reached (300).";
-          return;
-        }
-        // Remove existing user with same name
-        users = users.filter(u => u.name !== userName);
-        users.push({ name: userName, landmarks });
-        localStorage.setItem('handUsers', JSON.stringify(users));
-        output.textContent = `Enrolled hand for user: ${userName}`;
-      });
-    }
-
-    // Identify hand: compare to all enrolled users
-    function identifyHand() {
-      if (!handLandmarker) {
-        output.textContent = "HandLandmarker is loading...";
-        return;
-      }
-      if (!currentStream) {
-        output.textContent = "Please start the camera first";
-        return;
-      }
-      let users = JSON.parse(localStorage.getItem('handUsers') || '[]');
-      if (users.length === 0) {
-        output.textContent = "No enrolled users found.";
-        return;
-      }
-      captureHandLandmarks().then(landmarks => {
-        if (!landmarks) {
-          output.textContent = "No hand detected! Please try again.";
-          return;
-        }
-        let bestMatch = null;
-        let bestDist = Infinity;
-        for (const user of users) {
-          const dist = euclideanDistance(landmarks, user.landmarks);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestMatch = user;
-          }
-        }
-        // Threshold: adjust as needed (smaller = stricter)
-        const THRESHOLD = 0.15;
-        if (bestDist < THRESHOLD) {
-          output.textContent = `Identified as: ${bestMatch.name}\n(Distance: ${bestDist.toFixed(5)})`;
-        } else {
-          output.textContent = `No match found. Closest: ${bestMatch.name} (Distance: ${bestDist.toFixed(5)})`;
-        }
-      });
-    }
-
-    // Helper: capture hand landmarks (returns array or null)
-    async function captureHandLandmarks() {
-      output.textContent = "Capturing hand landmarks...";
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const detections = await handLandmarker.detectForVideo(canvas, performance.now());
-      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      if (detections.handednesses.length === 0) {
-        return null;
-      }
-      const landmarks = detections.landmarks[0];
-      drawHandLandmarks(overlayCtx, landmarks, overlay.width, overlay.height);
-      // Flatten landmarks to 1D array for storage/comparison
-      return landmarks.map(l => [l.x, l.y, l.z]).flat();
-    }
-
-    // Helper: Euclidean distance between two landmark arrays
-    function euclideanDistance(a, b) {
-      if (!a || !b || a.length !== b.length) return Infinity;
-      let sum = 0;
-      for (let i = 0; i < a.length; ++i) {
-        const d = a[i] - b[i];
-        sum += d * d;
-      }
-      return Math.sqrt(sum / a.length); // normalized
-    }
-
-    // Check if running on HTTPS
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      showStatus("Camera access requires HTTPS. Please run this on a secure connection or localhost.", "error");
-    }
-
-    // Initialize
-    setupHandLandmarker();
-    
-    // Auto-request permission on page load
-    setTimeout(() => {
-      if (!hasPermission) {
-        requestCameraPermission();
-      }
-    }, 1000);
-
-    // Expose functions to global scope for HTML onclick
-    window.startSelectedCamera = startSelectedCamera;
-    window.requestCameraPermission = requestCameraPermission;
-    window.captureAndHash = captureAndHash;
-    window.enrollHand = enrollHand;
-    window.identifyHand = identifyHand;
-    window.clearAllUsers = clearAllUsers;
-
-    // Clear all enrolled users from localStorage
-    function clearAllUsers() {
-      localStorage.removeItem('handUsers');
-      output.textContent = 'All enrolled users have been cleared.';
-    }
-
-    // Dark mode toggle logic
-    const darkModeToggle = document.getElementById('darkModeToggle');
-    function setDarkMode(on) {
-      document.body.classList.toggle('dark-mode', on);
-      darkModeToggle.textContent = on ? '☀️ Light Mode' : '🌙 Dark Mode';
-      localStorage.setItem('darkMode', on ? '1' : '0');
-    }
-    darkModeToggle.onclick = () => {
-      setDarkMode(!document.body.classList.contains('dark-mode'));
+    cameraSelect.onchange = () => {
+      startCamera(cameraSelect.value);
     };
-    // On load, set mode from localStorage
-    setDarkMode(localStorage.getItem('darkMode') === '1');
+
+    // Normalize landmarks for stable hash
+    function normalizeLandmarks(landmarks) {
+      const base = landmarks[0]; // wrist
+      // Find bounding box for normalization
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of landmarks) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+      const size = Math.max(maxX - minX, maxY - minY) || 1;
+      // Center and scale
+      return landmarks.map(p => ({
+        x: parseFloat(((p.x - base.x) / size).toFixed(4)),
+        y: parseFloat(((p.y - base.y) / size).toFixed(4)),
+        z: parseFloat(((p.z - base.z) / size).toFixed(4))
+      }));
+    }
+
+    // Hash function
+    function hashPalm(landmarks) {
+      const norm = normalizeLandmarks(landmarks);
+      const json = JSON.stringify(norm);
+      return CryptoJS.SHA256(json).toString();
+    }
+
+    // Check if all landmarks are inside the guide box
+    function isHandInBox(landmarks) {
+      if (!landmarks) return false;
+      for (const p of landmarks) {
+        const x = p.x * canvas.width;
+        const y = p.y * canvas.height;
+        if (
+          x < GUIDE_BOX.x + 4 ||
+          x > GUIDE_BOX.x + GUIDE_BOX.w - 4 ||
+          y < GUIDE_BOX.y + 4 ||
+          y > GUIDE_BOX.y + GUIDE_BOX.h - 4
+        ) return false;
+      }
+      return true;
+    }
+
+    // Draw guide box and hand skeleton
+    function drawOverlay(landmarks, handInBox, progress) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw guide box
+      ctx.save();
+      ctx.strokeStyle = handInBox ? '#2dff7a' : '#ff4d4d';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([8, 6]);
+      ctx.strokeRect(GUIDE_BOX.x, GUIDE_BOX.y, GUIDE_BOX.w, GUIDE_BOX.h);
+      ctx.restore();
+      // Draw hand skeleton
+      if (landmarks) {
+        // Draw lines
+        const connections = [
+          [0,1],[1,2],[2,3],[3,4],      // Thumb
+          [0,5],[5,6],[6,7],[7,8],      // Index
+          [5,9],[9,10],[10,11],[11,12], // Middle
+          [9,13],[13,14],[14,15],[15,16], // Ring
+          [13,17],[17,18],[18,19],[19,20], // Pinky
+          [0,17] // Palm base
+        ];
+        ctx.save();
+        ctx.strokeStyle = '#ffb300';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]);
+        for (const [a, b] of connections) {
+          const pa = toCanvas(landmarks[a]);
+          const pb = toCanvas(landmarks[b]);
+          ctx.beginPath();
+          ctx.moveTo(pa.x, pa.y);
+          ctx.lineTo(pb.x, pb.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // Draw points
+        ctx.save();
+        ctx.fillStyle = '#2d8cff';
+        for (const p of landmarks) {
+          const pt = toCanvas(p);
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Convert normalized landmark to canvas coordinates
+    function toCanvas(p) {
+      return {
+        x: p.x * canvas.width,
+        y: p.y * canvas.height
+      };
+    }
+
+    // MediaPipe callback
+    function onResults(results) {
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        currentLandmarks = results.multiHandLandmarks[0];
+        handInBox = isHandInBox(currentLandmarks);
+      } else {
+        currentLandmarks = null;
+        handInBox = false;
+      }
+      // Steady hand logic
+      if (handInBox) {
+        if (!steadyStart) steadyStart = Date.now();
+        progress = Math.min(1, (Date.now() - steadyStart) / STEADY_TIME);
+      } else {
+        steadyStart = null;
+        progress = 0;
+      }
+      progressBar.style.width = (progress * 100) + '%';
+      drawOverlay(currentLandmarks, handInBox, progress);
+    }
+
+    // Register button: add user
+    registerBtn.onclick = async () => {
+      if (users.length >= MAX_USERS) {
+        alert('Maximum 10 users allowed. Delete a user to add more.');
+        return;
+      }
+      const name = usernameInput.value.trim();
+      if (!name) {
+        alert('Enter a name.');
+        return;
+      }
+      if (users.some(u => u.name === name)) {
+        alert('Name already exists.');
+        return;
+      }
+      if (!currentLandmarks || !handInBox || progress < 1) {
+        alert('Hold your hand steady in the box for 5 seconds to register.');
+        return;
+      }
+      const hash = hashPalm(currentLandmarks);
+      users.push({ name, hash });
+      saveUsers();
+      renderUserList();
+      usernameInput.value = '';
+      alert('User registered!');
+    };
+
+    // Verify button: check selected user
+    verifyBtn.onclick = () => {
+      if (selectedUser === null || selectedUser === undefined) {
+        verifyResult.textContent = 'Select a user!';
+        verifyOutput.className = 'output mismatch';
+        return;
+      }
+      if (!currentLandmarks || !handInBox || progress < 1) {
+        verifyResult.textContent = 'Hold hand steady in box for 5s!';
+        verifyOutput.className = 'output mismatch';
+        return;
+      }
+      const hash = hashPalm(currentLandmarks);
+      if (hash === users[selectedUser].hash) {
+        verifyResult.textContent = 'MATCH (' + users[selectedUser].name + ')';
+        verifyOutput.className = 'output match';
+      } else {
+        verifyResult.textContent = 'MISMATCH';
+        verifyOutput.className = 'output mismatch';
+      }
+    };
+
+    // Set canvas size
+    function resizeCanvas() {
+      canvas.width = 400;
+      canvas.height = 300;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Init
+    loadUsers();
+    renderUserList();
+    updateCameraList();
+    // Listen for device changes (e.g., plug/unplug camera)
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', updateCameraList);
+    }
   </script>
 </body>
-</html>
+</html> 
