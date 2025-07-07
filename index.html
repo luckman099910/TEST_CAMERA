@@ -251,7 +251,7 @@
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const detections = await handLandmarker.detect(canvas);
+        const detections = await handLandmarker.detectForVideo(canvas, performance.now());
         if (detections.handednesses.length === 0) {
           output.textContent = "No hand detected! Please position your hand in front of the camera.";
           return;
