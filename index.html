@@ -70,7 +70,6 @@
   <button onclick="captureAndHash()" id="captureBtn" disabled>Scan Hand & Get Hash</button>
   <pre id="output"></pre>
 
-  <script src="/socket.io/socket.io.js"></script>
   <script type="module">
     import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs";
     import { keccak256, toUtf8Bytes } from "https://cdn.jsdelivr.net/npm/ethers@6.8.1/dist/ethers.min.js";
@@ -83,8 +82,6 @@
     const permissionBtn = document.getElementById("permissionBtn");
     const captureBtn = document.getElementById("captureBtn");
 
-    // Socket.IO connection
-    const socket = io();
     let handLandmarker;
     let currentStream;
     let hasPermission = false;
@@ -134,32 +131,19 @@
     async function requestCameraPermission() {
       try {
         showStatus("Requesting camera permission...", "info");
-        
-        // Notify server about camera status
-        socket.emit('cameraStatus', { action: 'requesting_permission' });
-        
         // Request basic camera access first
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: true, 
           audio: false 
         });
-        
         // Stop the stream immediately after getting permission
         stream.getTracks().forEach(track => track.stop());
-        
         hasPermission = true;
         showStatus("Camera permission granted! You can now select a camera.", "success");
-        
-        // Notify server about successful permission
-        socket.emit('cameraStatus', { action: 'permission_granted' });
-        
         // Now enumerate devices
         await listCameras();
-        
       } catch (error) {
         hasPermission = false;
-        socket.emit('cameraStatus', { action: 'permission_denied', error: error.message });
-        
         if (error.name === 'NotAllowedError') {
           showStatus("Camera permission denied. Please allow camera access and try again.", "error");
         } else if (error.name === 'NotFoundError') {
@@ -256,41 +240,26 @@
         output.textContent = "HandLandmarker is loading...";
         return;
       }
-
       if (!currentStream) {
         output.textContent = "Please start the camera first";
         return;
       }
-
       try {
         output.textContent = "Processing hand detection...";
-
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
         const detections = await handLandmarker.detect(canvas);
-        
         if (detections.handednesses.length === 0) {
           output.textContent = "No hand detected! Please position your hand in front of the camera.";
           return;
         }
-
         const landmarks = detections.landmarks[0];
         const landmarkString = landmarks.map(l => `${l.x.toFixed(5)},${l.y.toFixed(5)}`).join(";");
         const hash = keccak256(toUtf8Bytes(landmarkString));
-
-        // Send hash to server via Socket.IO
-        socket.emit('handHash', { 
-          hash: hash, 
-          timestamp: new Date().toISOString(),
-          landmarkCount: landmarks.length
-        });
-
-        output.textContent = `Hand detected! Hash generated:\n${hash}\n\nSending to server...`;
-        
+        output.textContent = `Hand detected! Hash generated:\n${hash}`;
       } catch (error) {
         output.textContent = `Error processing hand: ${error.message}`;
       }
@@ -300,25 +269,6 @@
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
       showStatus("Camera access requires HTTPS. Please run this on a secure connection or localhost.", "error");
     }
-
-    // Socket.IO event listeners
-    socket.on('connect', () => {
-      showStatus('Connected to server', 'success');
-    });
-
-    socket.on('disconnect', () => {
-      showStatus('Disconnected from server', 'error');
-    });
-
-    socket.on('hashReceived', (data) => {
-      if (data.success) {
-        output.textContent += `\n\n✅ Server response: ${data.message}\nTimestamp: ${data.timestamp}`;
-      }
-    });
-
-    socket.on('statusAcknowledged', (data) => {
-      console.log('Server acknowledged status:', data);
-    });
 
     // Initialize
     setupHandLandmarker();
